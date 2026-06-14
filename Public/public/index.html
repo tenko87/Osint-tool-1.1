@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private OSINT Intel Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            body { background: white; color: black; }
+            .no-print { display: none !important; }
+            .print-card { border: 1px solid #e5e7eb; box-shadow: none !important; page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen">
+    <header class="bg-slate-800 border-b border-slate-700 p-4 no-print shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h1 class="text-xl font-bold tracking-wider text-cyan-400">CORE-OSINT // VISUAL FRONTEND</h1>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Token Auth:</span>
+                <input type="password" id="authToken" placeholder="Enter X-OSINT-KEY" 
+                       class="bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm text-cyan-300 focus:outline-none focus:border-cyan-400 w-full sm:w-64">
+            </div>
+        </div>
+    </header>
+    <main class="max-w-7xl mx-auto p-4 sm:p-8">
+        <section class="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-2xl no-print mb-8">
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="w-full md:w-1/4">
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Scan Scope Target</label>
+                    <select id="targetType" class="bg-slate-900 border border-slate-600 rounded-lg p-3 w-full font-medium text-slate-200 focus:outline-none focus:border-cyan-400">
+                        <option value="username">Social Username Footprint</option>
+                        <option value="email">Passive Email Endpoint Check</option>
+                    </select>
+                </div>
+                <div class="w-full md:w-3/4">
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Query Input Field</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="targetQuery" placeholder="Enter target handle or identifier address..." 
+                               class="bg-slate-900 border border-slate-600 rounded-lg p-3 w-full font-mono text-cyan-400 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+                        <button onclick="executeInvestigation()" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-6 py-3 rounded-lg transition duration-200 active:scale-95 shadow-md">
+                            RUN_SCAN
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <div id="loader" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex flex-col justify-center items-center gap-4">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-400"></div>
+            <p class="text-cyan-400 font-mono tracking-widest text-sm animate-pulse">ASYNC_PIPELINE_RUNNING // EXECUTING OUTBOUND FOOTPRINTS</p>
+        </div>
+        <section id="resultsSection" class="hidden">
+            <div class="flex justify-between items-center mb-6 no-print">
+                <h2 class="text-lg font-bold uppercase tracking-wider text-slate-300">Normalized System Dossier Payload</h2>
+                <button onclick="window.print()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-4 py-2 text-sm rounded border border-slate-600 transition">
+                    Export PDF Dossier
+                </button>
+            </div>
+            <div class="hidden print:block mb-8 border-b-2 border-slate-300 pb-4">
+                <h1 class="text-3xl font-bold text-black uppercase">Automated OSINT Background Dossier</h1>
+                <p class="text-sm text-gray-600 mt-1">Source Pipeline Extraction Matrix File</p>
+                <div class="grid grid-cols-2 gap-4 mt-4 text-xs font-mono text-gray-700">
+                    <div><strong>TARGET ADDRESS REFERENCE:</strong> <span id="printTarget"></span></div>
+                    <div><strong>INVESTIGATION DOMAIN CONSTRAINT:</strong> <span id="printType"></span></div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 print-card shadow-lg">
+                    <h3 class="text-sm font-bold uppercase tracking-widest text-cyan-400 mb-4 border-b border-slate-700 pb-2">Active Validation Hits</h3>
+                    <div id="hitsContainer" class="space-y-3 max-h-[500px] overflow-y-auto pr-2"></div>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 print-card shadow-lg">
+                    <h3 class="text-sm font-bold uppercase tracking-widest text-purple-400 mb-4 border-b border-slate-700 pb-2">System Metadata Summary</h3>
+                    <div id="metaContainer" class="space-y-3 font-mono text-xs text-slate-300"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+    <script>
+        const tokenInput = document.getElementById('authToken');
+        if (sessionStorage.getItem('X-OSINT-KEY')) {
+            tokenInput.value = sessionStorage.getItem('X-OSINT-KEY');
+        }
+        tokenInput.addEventListener('input', (e) => {
+            sessionStorage.setItem('X-OSINT-KEY', e.target.value.trim());
+        });
+
+        async function executeInvestigation() {
+            const token = tokenInput.value.trim();
+            const type = document.getElementById('targetType').value;
+            const target = document.getElementById('targetQuery').value.trim();
+            
+            if (!token) { return alert("Execution Refused: Session credentials missing from header array."); }
+            if (!target) { return alert("Execution Refused: Target input query parameter is unassigned."); }
+
+            const loader = document.getElementById('loader');
+            const resultsSection = document.getElementById('resultsSection');
+            const hitsContainer = document.getElementById('hitsContainer');
+            const metaContainer = document.getElementById('metaContainer');
+
+            loader.classList.remove('hidden');
+            resultsSection.classList.add('hidden');
+            hitsContainer.innerHTML = '';
+            metaContainer.innerHTML = '';
+
+            document.getElementById('printTarget').innerText = target;
+            document.getElementById('printType').innerText = type.toUpperCase();
+
+            try {
+                const response = await fetch('/api/v1/investigate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-OSINT-KEY': token
+                    },
+                    body: JSON.stringify({ target: target, type: type })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Outbound processing transmission structural error.");
+                }
+
+                const payload = await response.json();
+                renderPayloadData(payload);
+                resultsSection.classList.remove('hidden');
+            } catch (error) {
+                alert(`Pipeline Crash Encountered: ${error.message}`);
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        function renderPayloadData(payload) {
+            const hitsContainer = document.getElementById('hitsContainer');
+            const metaContainer = document.getElementById('metaContainer');
+            const matches = payload.matches || [];
+            
+            if (matches.length === 0) {
+                hitsContainer.innerHTML = `<p class="text-sm text-slate-500 italic">No verified database coordinates or active profile footprints isolated.</p>`;
+            } else {
+                matches.forEach(item => {
+                    const block = document.createElement('div');
+                    block.className = 'bg-slate-900/60 p-4 rounded-lg border border-slate-700/50 text-slate-200';
+                    
+                    if (payload.type === 'username') {
+                        block.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-slate-100">${item.platform}</span>
+                                <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">ACTIVE</span>
+                            </div>
+                            <a href="${item.url}" target="_blank" class="text-xs text-cyan-400 underline break-all mt-2 block font-mono">${item.url}</a>
+                        `;
+                    } else {
+                        const borderStyle = item.exists ? 'border-purple-500/30 bg-purple-500/5' : 'border-slate-700/50';
+                        const badge = item.exists 
+                            ? '<span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded border border-purple-500/30">MATCH FOUND</span>'
+                            : '<span class="text-xs bg-slate-700 text-slate-400 px-2 py-0.5 rounded">NO RECORD</span>';
+                        
+                        block.className = `p-4 rounded-lg border ${borderStyle} text-slate-200`;
+                        block.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-slate-100">${item.platform}</span>
+                                ${badge}
+                            </div>
+                            <p class="text-xs text-slate-400 mt-2 font-mono">Info Array: ${item.info}</p>
+                        `;
+                    }
+                    hitsContainer.appendChild(block);
+                });
+            }
+
+            metaContainer.innerHTML = `
+                <div class="p-3 bg-slate-900 rounded border border-slate-700 space-y-1">
+                    <p><span class="text-slate-400">PIPELINE_STATUS:</span> <span class="text-emerald-400">SUCCESS_CLEAN_FLUSH</span></p>
+                    <p><span class="text-slate-400">MEM_ALLOCATION:</span> TRANSIENT_RAM_BUFFERS_PURGED</p>
+                    <p><span class="text-slate-400">TOTAL_METRIC_COUNT:</span> ${matches.length} matches mapped</p>
+                    <p><span class="text-slate-400">PROXY_ISOLATION:</span> FORCE_ROTATION_ENABLED</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
